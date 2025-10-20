@@ -76,10 +76,14 @@ namespace base_local_planner {
   }
 
   TrajectoryPlannerROS::TrajectoryPlannerROS() :
-      world_model_(NULL), tc_(NULL), costmap_ros_(NULL), tf_(NULL), setup_(false), initialized_(false), odom_helper_("odom") {}
+      world_model_(NULL), tc_(NULL), costmap_ros_(NULL), tf_(NULL), setup_(false), initialized_(false), odom_helper_("odom"),
+      pid_kp_(2.0), pid_ki_(0.0), pid_kd_(0.1), pid_integral_error_(0.0), pid_previous_error_(0.0), 
+      pid_max_integral_(0.5) {}
 
   TrajectoryPlannerROS::TrajectoryPlannerROS(std::string name, tf2_ros::Buffer* tf, costmap_2d::Costmap2DROS* costmap_ros) :
-      world_model_(NULL), tc_(NULL), costmap_ros_(NULL), tf_(NULL), setup_(false), initialized_(false), odom_helper_("odom") {
+      world_model_(NULL), tc_(NULL), costmap_ros_(NULL), tf_(NULL), setup_(false), initialized_(false), odom_helper_("odom"),
+      pid_kp_(2.0), pid_ki_(0.0), pid_kd_(0.1), pid_integral_error_(0.0), pid_previous_error_(0.0), 
+      pid_max_integral_(0.5) {
 
       //initialize the planner
       initialize(name, tf, costmap_ros);
@@ -124,6 +128,12 @@ namespace base_local_planner {
       private_nh.param("acc_lim_x", acc_lim_x_, 2.5);
       private_nh.param("acc_lim_y", acc_lim_y_, 2.5);
       private_nh.param("acc_lim_theta", acc_lim_theta_, 3.2);
+
+      // Load PID parameters for rotation control
+      private_nh.param("rotation_pid_kp", pid_kp_, 2.0);
+      private_nh.param("rotation_pid_ki", pid_ki_, 0.0);
+      private_nh.param("rotation_pid_kd", pid_kd_, 0.1);
+      private_nh.param("rotation_pid_max_integral", pid_max_integral_, 0.5);
 
       private_nh.param("stop_time_buffer", stop_time_buffer, 0.2);
 
@@ -341,33 +351,77 @@ namespace base_local_planner {
     double vel_yaw = tf2::getYaw(robot_vel.pose.orientation);
     cmd_vel.linear.x = 0;
     cmd_vel.linear.y = 0;
+    
+    // Calculate angular error using shortest path
     double ang_diff = angles::shortest_angular_distance(yaw, goal_th);
-
-    double v_theta_samp = ang_diff > 0.0 ? std::min(max_vel_th_,
-        std::max(min_in_place_vel_th_, ang_diff)) : std::max(min_vel_th_,
-        std::min(-1.0 * min_in_place_vel_th_, ang_diff));
-
-    //take the acceleration limits of the robot into account
-    double max_acc_vel = fabs(vel_yaw) + acc_lim_theta_ * sim_period_;
-    double min_acc_vel = fabs(vel_yaw) - acc_lim_theta_ * sim_period_;
-
-    v_theta_samp = sign(v_theta_samp) * std::min(std::max(fabs(v_theta_samp), min_acc_vel), max_acc_vel);
-
-    //we also want to make sure to send a velocity that allows us to stop when we reach the goal given our acceleration limits
-    double max_speed_to_stop = sqrt(2 * acc_lim_theta_ * fabs(ang_diff)); 
-
-    v_theta_samp = sign(v_theta_samp) * std::min(max_speed_to_stop, fabs(v_theta_samp));
-
-    // Re-enforce min_in_place_vel_th_.  It is more important than the acceleration limits.
-    v_theta_samp = v_theta_samp > 0.0
-      ? std::min( max_vel_th_, std::max( min_in_place_vel_th_, v_theta_samp ))
-      : std::max( min_vel_th_, std::min( -1.0 * min_in_place_vel_th_, v_theta_samp ));
-
-    //we still want to lay down the footprint of the robot and check if the action is legal
+    
+    // Initialize PID controller on first call or when switching to rotation mode
+    ros::Time current_time = ros::Time::now();
+    if (pid_last_time_.isZero()) {
+      pid_last_time_ = current_time;
+      pid_previous_error_ = ang_diff;
+      pid_integral_error_ = 0.0;
+    }
+    
+    // Calculate time delta
+    double dt = (current_time - pid_last_time_).toSec();
+    if (dt <= 0.0) dt = sim_period_; // Use sim_period as fallback
+    
+    // PID calculation
+    double error = ang_diff;
+    pid_integral_error_ += error * dt;
+    
+    // Clamp integral to prevent windup
+    pid_integral_error_ = std::max(-pid_max_integral_, std::min(pid_max_integral_, pid_integral_error_));
+    
+    double derivative = (error - pid_previous_error_) / dt;
+    
+    // PID output
+    double pid_output = pid_kp_ * error + pid_ki_ * pid_integral_error_ + pid_kd_ * derivative;
+    
+    // Update for next iteration
+    pid_previous_error_ = error;
+    pid_last_time_ = current_time;
+    
+    // Apply velocity limits
+    double v_theta_samp = std::max(min_vel_th_, std::min(max_vel_th_, pid_output));
+    
+    // Apply minimum in-place velocity if the command is not zero
+    if (fabs(v_theta_samp) > 0.0) {
+      if (v_theta_samp > 0.0) {
+        v_theta_samp = std::max(min_in_place_vel_th_, v_theta_samp);
+      } else {
+        v_theta_samp = std::min(-min_in_place_vel_th_, v_theta_samp);
+      }
+    }
+    
+    // Apply acceleration limits
+    double max_acc_vel = fabs(vel_yaw) + acc_lim_theta_ * dt;
+    double min_acc_vel = std::max(0.0, fabs(vel_yaw) - acc_lim_theta_ * dt);
+    
+    if (fabs(v_theta_samp) > max_acc_vel) {
+      v_theta_samp = sign(v_theta_samp) * max_acc_vel;
+    }
+    if (fabs(v_theta_samp) < min_acc_vel && fabs(v_theta_samp) > 0.0) {
+      v_theta_samp = sign(v_theta_samp) * min_acc_vel;
+    }
+    
+    // Check if we're close enough to goal to stop
+    if (fabs(ang_diff) < yaw_goal_tolerance_) {
+      cmd_vel.angular.z = 0.0;
+      // Reset PID state when goal is reached
+      pid_integral_error_ = 0.0;
+      pid_previous_error_ = 0.0;
+      pid_last_time_ = ros::Time();
+      return true;
+    }
+    
+    // Check trajectory validity
     bool valid_cmd = tc_->checkTrajectory(global_pose.pose.position.x, global_pose.pose.position.y, yaw,
         robot_vel.pose.position.x, robot_vel.pose.position.y, vel_yaw, 0.0, 0.0, v_theta_samp);
 
-    ROS_DEBUG("Moving to desired goal orientation, th cmd: %.2f, valid_cmd: %d", v_theta_samp, valid_cmd);
+    ROS_DEBUG("PID rotation control - error: %.3f, pid_output: %.3f, cmd: %.3f, valid: %d", 
+              error, pid_output, v_theta_samp, valid_cmd);
 
     if(valid_cmd){
       cmd_vel.angular.z = v_theta_samp;
@@ -376,7 +430,6 @@ namespace base_local_planner {
 
     cmd_vel.angular.z = 0.0;
     return false;
-
   }
 
   bool TrajectoryPlannerROS::setPlan(const std::vector<geometry_msgs::PoseStamped>& orig_global_plan){
@@ -393,6 +446,12 @@ namespace base_local_planner {
     xy_tolerance_latch_ = false;
     //reset the at goal flag
     reached_goal_ = false;
+    
+    // Reset PID controller state for new plan
+    pid_integral_error_ = 0.0;
+    pid_previous_error_ = 0.0;
+    pid_last_time_ = ros::Time();
+    
     return true;
   }
 

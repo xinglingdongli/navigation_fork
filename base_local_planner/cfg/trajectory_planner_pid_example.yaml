@@ -1,0 +1,46 @@
+# TrajectoryPlannerROS Configuration with PID Rotation Control
+# This configuration file shows how to tune the new PID parameters for rotation control
+
+TrajectoryPlannerROS:
+  # Standard trajectory planner parameters
+  max_vel_x: 0.5
+  min_vel_x: 0.1
+  max_vel_theta: 1.0
+  min_in_place_vel_theta: 0.4
+  
+  acc_lim_x: 2.5
+  acc_lim_y: 2.5
+  acc_lim_theta: 3.2
+  
+  xy_goal_tolerance: 0.10
+  yaw_goal_tolerance: 0.05
+  
+  # NEW PID parameters for rotation control
+  # These parameters control the PID controller used for in-place rotation
+  # when the robot has reached the goal position but needs to adjust orientation
+  
+  # Proportional gain - controls response strength to current error
+  # Higher values = faster response but may cause overshoot
+  # Recommended range: 1.0 - 4.0
+  rotation_pid_kp: 2.0
+  
+  # Integral gain - eliminates steady-state error
+  # Higher values = eliminates offset but may cause oscillation
+  # Recommended range: 0.0 - 0.5 (start with 0.0)
+  rotation_pid_ki: 0.0
+  
+  # Derivative gain - reduces overshoot and improves stability
+  # Higher values = more damping but may slow response
+  # Recommended range: 0.05 - 0.3
+  rotation_pid_kd: 0.1
+  
+  # Maximum integral accumulation to prevent windup
+  # Recommended range: 0.3 - 1.0
+  rotation_pid_max_integral: 0.5
+
+# Tuning Guidelines:
+# 1. Start with Kp=2.0, Ki=0.0, Kd=0.1
+# 2. If oscillation occurs, reduce Kp or increase Kd
+# 3. If steady-state error persists, slowly increase Ki (start with 0.1)
+# 4. If response is too slow, increase Kp
+# 5. For quadruped robots, consider slightly higher Kd for stability

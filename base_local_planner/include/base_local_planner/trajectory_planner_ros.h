@@ -215,6 +215,13 @@ namespace base_local_planner {
       bool reached_goal_;
       bool latch_xy_goal_tolerance_, xy_tolerance_latch_;
 
+      // PID controller variables for rotation
+      double pid_kp_, pid_ki_, pid_kd_;
+      double pid_integral_error_;
+      double pid_previous_error_;
+      ros::Time pid_last_time_;
+      double pid_max_integral_;
+
       ros::Publisher g_plan_pub_, l_plan_pub_;
 
       dynamic_reconfigure::Server<BaseLocalPlannerConfig> *dsrv_;
