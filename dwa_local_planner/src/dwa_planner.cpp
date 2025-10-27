@@ -37,6 +37,7 @@
 #include <dwa_local_planner/dwa_planner.h>
 #include <base_local_planner/goal_functions.h>
 #include <cmath>
+#include <string>
 
 //for computing path distance
 #include <queue>
@@ -49,6 +50,14 @@
 #include <sensor_msgs/point_cloud2_iterator.h>
 
 namespace dwa_local_planner {
+  DWAPlanner::~DWAPlanner() {
+    if (trajectory_log_file_.is_open()) {
+      trajectory_log_file_ << "\n=== DWA Trajectory Log Ended ===" << std::endl;
+      trajectory_log_file_.close();
+      ROS_INFO("DWA trajectory log file closed.");
+    }
+  }
+
   void DWAPlanner::reconfigure(DWAPlannerConfig &config)
   {
 
@@ -183,6 +192,34 @@ namespace dwa_local_planner {
     scored_sampling_planner_ = base_local_planner::SimpleScoredSamplingPlanner(generator_list, critics);
 
     private_nh.param("cheat_factor", cheat_factor_, 1.0);
+    
+    // Initialize trajectory logging
+    std::string log_filename = "/tmp/dwa_trajectories_" + std::to_string(ros::Time::now().toSec()) + ".log";
+    trajectory_log_file_.open(log_filename, std::ios::out | std::ios::app);
+    if (trajectory_log_file_.is_open()) {
+      ROS_INFO("DWA trajectory logging enabled, writing to: %s", log_filename.c_str());
+      trajectory_log_file_ << "=== DWA Trajectory Analysis Log ===" << std::endl;
+      trajectory_log_file_ << "Timestamp: " << ros::Time::now() << std::endl;
+      trajectory_log_file_ << "Format: [Trajectory ID] Velocity(vx,vy,vtheta) Cost Points" << std::endl;
+      trajectory_log_file_ << "Cost Functions: oscillation, obstacle, goal_front, alignment, path, goal, twirling" << std::endl;
+      trajectory_log_file_ << "========================================" << std::endl;
+    } else {
+      ROS_WARN("Failed to open trajectory log file: %s", log_filename.c_str());
+    }
+    
+    // Initialize trajectory logging
+    std::string log_filename = "/tmp/dwa_trajectories_" + std::to_string(ros::Time::now().toSec()) + ".log";
+    trajectory_log_file_.open(log_filename, std::ios::out | std::ios::app);
+    if (trajectory_log_file_.is_open()) {
+      ROS_INFO("DWA trajectory logging enabled, writing to: %s", log_filename.c_str());
+      trajectory_log_file_ << "=== DWA Trajectory Analysis Log ===" << std::endl;
+      trajectory_log_file_ << "Timestamp: " << ros::Time::now() << std::endl;
+      trajectory_log_file_ << "Format: [Trajectory ID] Velocity(vx,vy,vtheta) Cost Points" << std::endl;
+      trajectory_log_file_ << "Cost Functions: oscillation, obstacle, goal_front, alignment, path, goal, twirling" << std::endl;
+      trajectory_log_file_ << "========================================" << std::endl;
+    } else {
+      ROS_WARN("Failed to open trajectory log file: %s", log_filename.c_str());
+    }
   }
 
   // used for visualization only, total_costs are not really total costs
@@ -319,6 +356,9 @@ namespace dwa_local_planner {
     // find best trajectory by sampling and scoring the samples
     std::vector<base_local_planner::Trajectory> all_explored;
     scored_sampling_planner_.findBestTrajectory(result_traj_, &all_explored);
+    
+    // Log all trajectories and their cost details
+    logTrajectoryDetails(all_explored, result_traj_);
 
     if(publish_traj_pc_)
     {
@@ -390,5 +430,73 @@ namespace dwa_local_planner {
     }
 
     return result_traj_;
+  }
+
+  void DWAPlanner::logTrajectoryDetails(const std::vector<base_local_planner::Trajectory>& all_explored, 
+                                       const base_local_planner::Trajectory& best_traj) {
+    if (!trajectory_log_file_.is_open()) return;
+    
+    trajectory_log_file_ << "\n=== Planning Cycle at " << ros::Time::now() << " ===" << std::endl;
+    trajectory_log_file_ << "Total trajectories explored: " << all_explored.size() << std::endl;
+    trajectory_log_file_ << "Best trajectory cost: " << best_traj.cost_ << std::endl;
+    trajectory_log_file_ << "Best trajectory velocity: (" << best_traj.xv_ << ", " << best_traj.yv_ << ", " << best_traj.thetav_ << ")" << std::endl;
+    
+    trajectory_log_file_ << "\n--- All Trajectories ---" << std::endl;
+    for (size_t i = 0; i < all_explored.size(); ++i) {
+      const auto& traj = all_explored[i];
+      trajectory_log_file_ << "[" << i << "] ";
+      trajectory_log_file_ << "Vel(" << traj.xv_ << "," << traj.yv_ << "," << traj.thetav_ << ") ";
+      trajectory_log_file_ << "Cost: " << traj.cost_ << " ";
+      trajectory_log_file_ << "Points: " << traj.getPointsSize() << " ";
+      
+      // Log detailed cost breakdown for this trajectory
+      logCostFunctionDetails(traj, traj.cost_);
+      
+      // Log trajectory points
+      trajectory_log_file_ << "Path: ";
+      for (unsigned int j = 0; j < traj.getPointsSize(); ++j) {
+        double px, py, pth;
+        traj.getPoint(j, px, py, pth);
+        trajectory_log_file_ << "(" << px << "," << py << "," << pth << ") ";
+      }
+      trajectory_log_file_ << std::endl;
+    }
+    trajectory_log_file_ << std::endl;
+    trajectory_log_file_.flush();
+  }
+
+  void DWAPlanner::logCostFunctionDetails(const base_local_planner::Trajectory& traj, double total_cost) {
+    if (!trajectory_log_file_.is_open()) return;
+    
+    // Calculate individual cost function contributions
+    // We need to create a non-const copy to score it
+    base_local_planner::Trajectory temp_traj = traj;
+    
+    trajectory_log_file_ << "CostBreakdown[";
+    
+    // Score with individual cost functions to get breakdown
+    std::vector<std::string> cost_names = {"oscillation", "obstacle", "goal_front", "alignment", "path", "goal", "twirling"};
+    std::vector<base_local_planner::TrajectoryCostFunction*> critics = {
+      &oscillation_costs_, &obstacle_costs_, &goal_front_costs_, 
+      &alignment_costs_, &path_costs_, &goal_costs_, &twirling_costs_
+    };
+    
+    for (size_t i = 0; i < critics.size() && i < cost_names.size(); ++i) {
+      if (critics[i]->getScale() == 0) {
+        trajectory_log_file_ << cost_names[i] << ":0.0(disabled) ";
+        continue;
+      }
+      
+      double cost = critics[i]->scoreTrajectory(temp_traj);
+      if (cost < 0) {
+        trajectory_log_file_ << cost_names[i] << ":" << cost << "(INVALID) ";
+        break; // If any cost function returns negative, trajectory is invalid
+      } else {
+        double scaled_cost = (cost != 0) ? cost * critics[i]->getScale() : 0.0;
+        trajectory_log_file_ << cost_names[i] << ":" << cost << "*" << critics[i]->getScale() << "=" << scaled_cost << " ";
+      }
+    }
+    
+    trajectory_log_file_ << "Total:" << total_cost << "] ";
   }
 };

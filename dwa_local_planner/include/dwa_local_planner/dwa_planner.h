@@ -39,7 +39,7 @@
 
 #include <vector>
 #include <Eigen/Core>
-
+#include <fstream>
 
 #include <dwa_local_planner/DWAPlannerConfig.h>
 
@@ -76,6 +76,11 @@ namespace dwa_local_planner {
        * @param global_frame the frame id of the tf frame to use
        */
       DWAPlanner(std::string name, base_local_planner::LocalPlannerUtil *planner_util);
+
+      /**
+       * @brief Destructor for the planner
+       */
+      ~DWAPlanner();
 
       /**
        * @brief Reconfigures the trajectory planner
@@ -180,6 +185,12 @@ namespace dwa_local_planner {
       base_local_planner::TwirlingCostFunction twirling_costs_;
 
       base_local_planner::SimpleScoredSamplingPlanner scored_sampling_planner_;
+      
+      // Logging for trajectory analysis
+      std::ofstream trajectory_log_file_;
+      void logTrajectoryDetails(const std::vector<base_local_planner::Trajectory>& all_explored, 
+                               const base_local_planner::Trajectory& best_traj);
+      void logCostFunctionDetails(const base_local_planner::Trajectory& traj, double total_cost);
   };
 };
 #endif
