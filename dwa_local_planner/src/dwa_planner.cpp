@@ -194,7 +194,7 @@ namespace dwa_local_planner {
     private_nh.param("cheat_factor", cheat_factor_, 1.0);
     
     // Initialize trajectory logging
-    std::string log_filename = "/tmp/dwa_trajectories_" + std::to_string(ros::Time::now().toSec()) + ".log";
+    std::string log_filename = "/home/unitree/champ_ws/src/champ/champ_config/cost_data/trajectories_" + std::to_string(ros::Time::now().toSec()) + ".log";
     trajectory_log_file_.open(log_filename, std::ios::out | std::ios::app);
     if (trajectory_log_file_.is_open()) {
       ROS_INFO("DWA trajectory logging enabled, writing to: %s", log_filename.c_str());
@@ -207,19 +207,19 @@ namespace dwa_local_planner {
       ROS_WARN("Failed to open trajectory log file: %s", log_filename.c_str());
     }
     
-    // Initialize trajectory logging
-    std::string log_filename = "/tmp/dwa_trajectories_" + std::to_string(ros::Time::now().toSec()) + ".log";
-    trajectory_log_file_.open(log_filename, std::ios::out | std::ios::app);
-    if (trajectory_log_file_.is_open()) {
-      ROS_INFO("DWA trajectory logging enabled, writing to: %s", log_filename.c_str());
-      trajectory_log_file_ << "=== DWA Trajectory Analysis Log ===" << std::endl;
-      trajectory_log_file_ << "Timestamp: " << ros::Time::now() << std::endl;
-      trajectory_log_file_ << "Format: [Trajectory ID] Velocity(vx,vy,vtheta) Cost Points" << std::endl;
-      trajectory_log_file_ << "Cost Functions: oscillation, obstacle, goal_front, alignment, path, goal, twirling" << std::endl;
-      trajectory_log_file_ << "========================================" << std::endl;
-    } else {
-      ROS_WARN("Failed to open trajectory log file: %s", log_filename.c_str());
-    }
+    // // Initialize trajectory logging
+    // std::string log_filename = "/tmp/dwa_trajectories_" + std::to_string(ros::Time::now().toSec()) + ".log";
+    // trajectory_log_file_.open(log_filename, std::ios::out | std::ios::app);
+    // if (trajectory_log_file_.is_open()) {
+    //   ROS_INFO("DWA trajectory logging enabled, writing to: %s", log_filename.c_str());
+    //   trajectory_log_file_ << "=== DWA Trajectory Analysis Log ===" << std::endl;
+    //   trajectory_log_file_ << "Timestamp: " << ros::Time::now() << std::endl;
+    //   trajectory_log_file_ << "Format: [Trajectory ID] Velocity(vx,vy,vtheta) Cost Points" << std::endl;
+    //   trajectory_log_file_ << "Cost Functions: oscillation, obstacle, goal_front, alignment, path, goal, twirling" << std::endl;
+    //   trajectory_log_file_ << "========================================" << std::endl;
+    // } else {
+    //   ROS_WARN("Failed to open trajectory log file: %s", log_filename.c_str());
+    // }
   }
 
   // used for visualization only, total_costs are not really total costs

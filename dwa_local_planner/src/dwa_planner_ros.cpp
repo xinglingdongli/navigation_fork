@@ -208,7 +208,7 @@ namespace dwa_local_planner {
     
     // call with updated footprint
     base_local_planner::Trajectory path = dp_->findBestPath(global_pose, robot_vel, drive_cmds);
-    //ROS_ERROR("Best: %.2f, %.2f, %.2f, %.2f", path.xv_, path.yv_, path.thetav_, path.cost_);
+    ROS_DEBUG_NAMED("dwa_local_planner", "Best: %.2f, %.2f, %.2f, %.2f", path.xv_, path.yv_, path.thetav_, path.cost_);
 
     /* For timing uncomment
     gettimeofday(&end, NULL);

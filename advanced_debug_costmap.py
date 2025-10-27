@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """
 Advanced debug script to analyze the wavefront propagation and target distance calculation
@@ -10,7 +10,7 @@ from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Path
 import tf2_ros
-import tf2_geometry_msgs
+# import tf2_geometry_msgs
 from geometry_msgs.msg import TransformStamped
 
 class AdvancedCostmapDebugger:
