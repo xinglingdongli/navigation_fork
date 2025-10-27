@@ -46,6 +46,7 @@
 #include <base_local_planner/goal_functions.h>
 #include <nav_msgs/Path.h>
 #include <tf2/utils.h>
+#include <costmap_2d/cost_values.h>
 
 #include <nav_core/parameter_magic.h>
 
@@ -90,7 +91,7 @@ namespace dwa_local_planner {
   }
 
   DWAPlannerROS::DWAPlannerROS() : initialized_(false),
-      odom_helper_("odom"), setup_(false) {
+      odom_helper_("odom"), setup_(false), recovery_attempts_(0) {
 
   }
 
@@ -207,7 +208,7 @@ namespace dwa_local_planner {
     
     // call with updated footprint
     base_local_planner::Trajectory path = dp_->findBestPath(global_pose, robot_vel, drive_cmds);
-    //ROS_ERROR("Best: %.2f, %.2f, %.2f, %.2f", path.xv_, path.yv_, path.thetav_, path.cost_);
+    ROS_DEBUG_NAMED("dwa_local_planner", "Best: %.2f, %.2f, %.2f, %.2f", path.xv_, path.yv_, path.thetav_, path.cost_);
 
     /* For timing uncomment
     gettimeofday(&end, NULL);
@@ -304,6 +305,15 @@ namespace dwa_local_planner {
         publishGlobalPlan(transformed_plan);
       } else {
         ROS_WARN_NAMED("dwa_local_planner", "DWA planner failed to produce path.");
+        
+        // Recovery behavior: Try to move backward slightly if stuck in inflation layer
+        if (attemptRecoveryManeuver(cmd_vel)) {
+          ROS_INFO_NAMED("dwa_local_planner", "Executing recovery maneuver");
+          std::vector<geometry_msgs::PoseStamped> empty_plan;
+          publishGlobalPlan(empty_plan);
+          return true;
+        }
+        
         std::vector<geometry_msgs::PoseStamped> empty_plan;
         publishGlobalPlan(empty_plan);
       }
@@ -311,5 +321,78 @@ namespace dwa_local_planner {
     }
   }
 
+  bool DWAPlannerROS::attemptRecoveryManeuver(geometry_msgs::Twist& cmd_vel) {
+    ros::Time current_time = ros::Time::now();
+    
+    // Reset recovery attempts if enough time has passed
+    if ((current_time - last_recovery_time_).toSec() > RECOVERY_TIMEOUT) {
+      recovery_attempts_ = 0;
+    }
+    
+    // Check if we've exceeded maximum recovery attempts
+    if (recovery_attempts_ >= MAX_RECOVERY_ATTEMPTS) {
+      ROS_ERROR_NAMED("dwa_local_planner", "Maximum recovery attempts reached. Robot may be stuck.");
+      return false;
+    }
+    
+    costmap_2d::Costmap2D* costmap = costmap_ros_->getCostmap();
+    unsigned int mx, my;
+    
+    if (!costmap->worldToMap(current_pose_.pose.position.x, current_pose_.pose.position.y, mx, my)) {
+      return false;
+    }
+    
+    unsigned char cost = costmap->getCost(mx, my);
+    
+    // Only attempt recovery if in inflation layer
+    if (cost > costmap_2d::INSCRIBED_INFLATED_OBSTACLE && cost < costmap_2d::LETHAL_OBSTACLE) {
+      recovery_attempts_++;
+      last_recovery_time_ = current_time;
+      
+      ROS_WARN_NAMED("dwa_local_planner", 
+                     "Recovery attempt %d/%d: Robot in inflation layer (cost: %d)", 
+                     recovery_attempts_, MAX_RECOVERY_ATTEMPTS, cost);
+      
+      // Different recovery strategies based on attempt number
+      switch (recovery_attempts_) {
+        case 1:
+          // First attempt: small backward movement
+          cmd_vel.linear.x = -0.05;
+          cmd_vel.linear.y = 0.0;
+          cmd_vel.angular.z = 0.0;
+          ROS_INFO_NAMED("dwa_local_planner", "Recovery: Moving backward");
+          break;
+          
+        case 2:
+          // Second attempt: rotate in place
+          cmd_vel.linear.x = 0.0;
+          cmd_vel.linear.y = 0.0;
+          cmd_vel.angular.z = 0.3;
+          ROS_INFO_NAMED("dwa_local_planner", "Recovery: Rotating in place");
+          break;
+          
+        case 3:
+          // Third attempt: backward with rotation
+          cmd_vel.linear.x = -0.03;
+          cmd_vel.linear.y = 0.0;
+          cmd_vel.angular.z = -0.2;
+          ROS_INFO_NAMED("dwa_local_planner", "Recovery: Backward with rotation");
+          break;
+          
+        default:
+          return false;
+      }
+      
+      return true;
+    }
+    
+    // If not in inflation layer, reset recovery attempts
+    if (recovery_attempts_ > 0) {
+      ROS_INFO_NAMED("dwa_local_planner", "Robot escaped inflation layer, resetting recovery attempts");
+      recovery_attempts_ = 0;
+    }
+    
+    return false;
+  }
 
 };
