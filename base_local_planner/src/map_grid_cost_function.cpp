@@ -127,8 +127,8 @@ double MapGridCostFunction::scoreTrajectory(Trajectory &traj) {
       } else if (grid_dist == map_.unreachableCellCosts()) {
         ROS_ERROR("Trajectory point (%u,%u) failed: grid_dist=%.1f equals unreachableCellCosts=%.1f", 
                   cell_x, cell_y, grid_dist, map_.unreachableCellCosts());
-        ROS_ERROR("Map size: %zu, obstacleCosts: %.1f, unreachableCellCosts: %.1f", 
-                  map_.size(), map_.obstacleCosts(), map_.unreachableCellCosts());
+        ROS_ERROR("Map size: %d, %d, obstacleCosts: %.1f, unreachableCellCosts: %.1f", 
+                  map_.size_x_, map_.size_y_, map_.obstacleCosts(), map_.unreachableCellCosts());
         return -2.0;
       }
     }
