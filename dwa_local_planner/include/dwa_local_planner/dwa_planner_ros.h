@@ -144,16 +144,26 @@ namespace dwa_local_planner {
       dynamic_reconfigure::Server<DWAPlannerConfig> *dsrv_;
       dwa_local_planner::DWAPlannerConfig default_config_;
       bool setup_;
-      geometry_msgs::PoseStamped current_pose_;
-
-      base_local_planner::LatchedStopRotateController latchedStopRotateController_;
-
+      geometry_msgs::PoseStamped current_pose_;      base_local_planner::LatchedStopRotateController latchedStopRotateController_;
 
       bool initialized_;
 
-
       base_local_planner::OdometryHelperRos odom_helper_;
       std::string odom_topic_;
+      
+      // Recovery behavior variables
+      int recovery_attempts_;
+      ros::Time last_recovery_time_;
+      static const int MAX_RECOVERY_ATTEMPTS = 3;
+      static constexpr double RECOVERY_TIMEOUT = 2.0;  // seconds
+      
+    private:
+      /**
+       * @brief Attempt recovery maneuver when stuck in inflation layer
+       * @param cmd_vel The velocity command to be modified for recovery
+       * @return True if recovery command was set, false otherwise
+       */
+      bool attemptRecoveryManeuver(geometry_msgs::Twist& cmd_vel);
   };
 };
 #endif
