@@ -343,6 +343,15 @@ namespace dwa_local_planner {
     Eigen::Vector3f vel(global_vel.pose.position.x, global_vel.pose.position.y, tf2::getYaw(global_vel.pose.orientation));
     geometry_msgs::PoseStamped goal_pose = global_plan_.back();
     Eigen::Vector3f goal(goal_pose.pose.position.x, goal_pose.pose.position.y, tf2::getYaw(goal_pose.pose.orientation));
+    
+    // Log robot and goal positions for debugging
+    if (trajectory_log_file_.is_open()) {
+      trajectory_log_file_ << "\n=== DWA Planning Cycle ===" << std::endl;
+      trajectory_log_file_ << "Robot position: (" << pos[0] << ", " << pos[1] << ", " << pos[2] << ")" << std::endl;
+      trajectory_log_file_ << "Goal position: (" << goal[0] << ", " << goal[1] << ", " << goal[2] << ")" << std::endl;
+      trajectory_log_file_ << "Distance to goal: " << sqrt(pow(goal[0]-pos[0], 2) + pow(goal[1]-pos[1], 2)) << std::endl;
+    }
+
     base_local_planner::LocalPlannerLimits limits = planner_util_->getCurrentLimits();
 
     // prepare cost functions and generators for this run
