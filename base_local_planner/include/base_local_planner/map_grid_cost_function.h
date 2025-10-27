@@ -119,6 +119,33 @@ public:
   double getCellCosts(unsigned int cx, unsigned int cy);
 
 private:
+  /**
+   * @brief Validate global path and fix unreachable points
+   * @param original_path The original global path
+   * @param validated_path The output validated path
+   * @return true if validation successful
+   */
+  bool validateGlobalPath(const std::vector<geometry_msgs::PoseStamped>& original_path,
+                         std::vector<geometry_msgs::PoseStamped>& validated_path);
+  
+  /**
+   * @brief Filter out unreachable poses from the path
+   * @param original_path The original path
+   * @param filtered_path The output filtered path containing only reachable poses
+   */
+  void filterReachablePoses(const std::vector<geometry_msgs::PoseStamped>& original_path,
+                           std::vector<geometry_msgs::PoseStamped>& filtered_path);
+  
+  /**
+   * @brief Find a nearby free pose if the original pose is in obstacle
+   * @param original_pose The original pose
+   * @param free_pose Output free pose
+   * @param search_radius Search radius in meters
+   * @return true if free pose found
+   */
+  bool findNearbyFreePose(const geometry_msgs::PoseStamped& original_pose,
+                         geometry_msgs::PoseStamped& free_pose,
+                         double search_radius = 0.5);
   std::vector<geometry_msgs::PoseStamped> target_poses_;
   costmap_2d::Costmap2D* costmap_;
 
