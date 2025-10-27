@@ -58,12 +58,28 @@ void MapGridCostFunction::setTargetPoses(std::vector<geometry_msgs::PoseStamped>
 
 bool MapGridCostFunction::prepare() {
   map_.resetPathDist();
-
+  
+  ROS_INFO("MapGridCostFunction::prepare() - target_poses_.size() = %zu", target_poses_.size());
+  
   if (is_local_goal_function_) {
+    ROS_INFO("Using setLocalGoal");
     map_.setLocalGoal(*costmap_, target_poses_);
   } else {
+    ROS_INFO("Using setTargetCells"); 
     map_.setTargetCells(*costmap_, target_poses_);
   }
+  
+  // 检查map_中有多少cell的target_dist不等于unreachableCellCosts
+  int reachable_cells = 0;
+  int total_cells = costmap_->getSizeInCellsX() * costmap_->getSizeInCellsY();
+  for (int i = 0; i < total_cells; i++) {
+    if (map_(i % costmap_->getSizeInCellsX(), i / costmap_->getSizeInCellsX()).target_dist < map_.unreachableCellCosts()) {
+      reachable_cells++;
+    }
+  }
+  ROS_WARN("After target setting: %d/%d cells are reachable (target_dist < unreachableCellCosts)", 
+           reachable_cells, total_cells);
+  
   return true;
 }
 
@@ -105,8 +121,14 @@ double MapGridCostFunction::scoreTrajectory(Trajectory &traj) {
     //if a point on this trajectory has no clear path to the goal... it may be invalid
     if (stop_on_failure_) {
       if (grid_dist == map_.obstacleCosts()) {
+        ROS_ERROR("Trajectory point (%u,%u) failed: grid_dist=%.1f equals obstacleCosts=%.1f", 
+                  cell_x, cell_y, grid_dist, map_.obstacleCosts());
         return -3.0;
       } else if (grid_dist == map_.unreachableCellCosts()) {
+        ROS_ERROR("Trajectory point (%u,%u) failed: grid_dist=%.1f equals unreachableCellCosts=%.1f", 
+                  cell_x, cell_y, grid_dist, map_.unreachableCellCosts());
+        ROS_ERROR("Map size: %zu, obstacleCosts: %.1f, unreachableCellCosts: %.1f", 
+                  map_.size(), map_.obstacleCosts(), map_.unreachableCellCosts());
         return -2.0;
       }
     }
