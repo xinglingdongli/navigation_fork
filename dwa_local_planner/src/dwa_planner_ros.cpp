@@ -164,6 +164,7 @@ namespace dwa_local_planner {
     }
 
     if(latchedStopRotateController_.isGoalReached(&planner_util_, odom_helper_, current_pose_)) {
+      ROS_INFO("HEREEEEEEEEEEEEEEEEEEEEEEEEEE");
       ROS_INFO("Goal reached");
       return true;
     } else {
