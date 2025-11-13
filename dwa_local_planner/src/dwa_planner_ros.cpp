@@ -420,11 +420,13 @@ namespace dwa_local_planner {
       
       // Align orientation to goal orientation
       double angle_diff = angles::shortest_angular_distance(current_yaw, goal_yaw);
+      ROS_DEBUG("DWA: Angle to goal: %.3f rad, Current yaw: %.3f rad, Goal yaw: %.3f rad", 
+                angle_to_goal, current_yaw, goal_yaw);
       
       if (fabs(angle_diff) > 0.1) {  // 0.1 rad ≈ 5.7 degrees tolerance
         cmd_vel.linear.x = 0.0;
         cmd_vel.linear.y = 0.0;
-        cmd_vel.angular.z = (angle_diff > 0) ? 0.3 : -0.3;
+        cmd_vel.angular.z = (angle_diff > 0) ? -0.3 : 0.3;
         
         ROS_DEBUG("DWA: Aligning orientation - angle diff: %.3f rad", angle_diff);
         return true;

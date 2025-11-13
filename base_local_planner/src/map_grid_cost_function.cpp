@@ -225,8 +225,8 @@ bool MapGridCostFunction::validateGlobalPath(const std::vector<geometry_msgs::Po
       if (findNearbyFreePose(original_path[i], fixed_pose)) {
         validated_path.push_back(fixed_pose);
         fixed_points++;
-        ROS_DEBUG("Fixed pose at (%.2f, %.2f) -> (%.2f, %.2f)", 
-                 wx, wy, fixed_pose.pose.position.x, fixed_pose.pose.position.y);
+        // ROS_DEBUG("Fixed pose at (%.2f, %.2f) -> (%.2f, %.2f)", 
+        //          wx, wy, fixed_pose.pose.position.x, fixed_pose.pose.position.y);
       } else {
         // 如果找不到可通行的点，跳过该点
         skipped_points++;
