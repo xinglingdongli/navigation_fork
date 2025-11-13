@@ -157,6 +157,11 @@ namespace dwa_local_planner {
       static const int MAX_RECOVERY_ATTEMPTS = 3;
       static constexpr double RECOVERY_TIMEOUT = 2.0;  // seconds
       
+      // Final straight line approach variables
+      static constexpr double FINAL_APPROACH_DISTANCE = 0.20;  // 20cm threshold
+      static constexpr double FINAL_APPROACH_LINEAR_VEL = 0.15;  // Fixed linear velocity for final approach
+      bool in_final_approach_;
+      
     private:
       /**
        * @brief Attempt recovery maneuver when stuck in inflation layer
@@ -164,6 +169,14 @@ namespace dwa_local_planner {
        * @return True if recovery command was set, false otherwise
        */
       bool attemptRecoveryManeuver(geometry_msgs::Twist& cmd_vel);
+      
+      /**
+       * @brief Compute velocity commands for final straight line approach
+       * @param cmd_vel The velocity command to be set
+       * @param goal_pose The goal pose
+       * @return True if command was successfully computed
+       */
+      bool finalStraightLineApproach(geometry_msgs::Twist& cmd_vel, const geometry_msgs::PoseStamped& goal_pose);
   };
 };
 #endif

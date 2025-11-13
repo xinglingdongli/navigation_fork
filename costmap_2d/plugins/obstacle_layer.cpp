@@ -356,13 +356,29 @@ void ObstacleLayer::updateBounds(double robot_x, double robot_y, double robot_ya
   // update the global current status
   current_ = current;
 
+  // DEBUG: 打印clearing信息
+  // static int update_count = 0;
+  // update_count++;
+  // if (update_count % 50 == 0) {
+  //   ROS_WARN("[ObstacleLayer] Update #%d: clearing_buffers=%lu, clearing_observations=%lu, marking_observations=%lu",
+  //            update_count, clearing_buffers_.size(), clearing_observations.size(), observations.size());
+  // }
+
   // raytrace freespace
   for (unsigned int i = 0; i < clearing_observations.size(); ++i)
   {
     raytraceFreespace(clearing_observations[i], min_x, min_y, max_x, max_y);
   }
 
+  // DEBUG: 检查是否在同一位置既clearing又marking
+  // static int check_count = 0;
+  // check_count++;
+  // if (check_count % 100 == 0) {
+  //   ROS_WARN("[ObstacleLayer] Check #%d: This is EXPECTED behavior - raytrace clears the path, but obstacle points are marked. If the obstacle is still detected by laser, it will remain marked!", check_count);
+  // }
+
   // place the new obstacles into a priority queue... each with a priority of zero to begin with
+  // unsigned int marking_points_added = 0;
   for (std::vector<Observation>::const_iterator it = observations.begin(); it != observations.end(); ++it)
   {
     const Observation& obs = *it;
@@ -408,8 +424,15 @@ void ObstacleLayer::updateBounds(double robot_x, double robot_y, double robot_ya
       unsigned int index = getIndex(mx, my);
       costmap_[index] = LETHAL_OBSTACLE;
       touch(px, py, min_x, min_y, max_x, max_y);
+      // marking_points_added++;
     }
   }
+
+  // static int marking_counter = 0;
+  // if (++marking_counter % 50 == 0) {
+  //   ROS_WARN("[ObstacleLayer] Marking #%d: added %u obstacle points", 
+  //            marking_counter, marking_points_added);
+  // }
 
   updateFootprint(robot_x, robot_y, robot_yaw, min_x, min_y, max_x, max_y);
 }
@@ -501,6 +524,22 @@ void ObstacleLayer::raytraceFreespace(const Observation& clearing_observation, d
   double oy = clearing_observation.origin_.y;
   const sensor_msgs::PointCloud2 &cloud = *(clearing_observation.cloud_);
 
+  // DEBUG: 打印raytrace调用和清除的格子数
+  // static int raytrace_count = 0;
+  // static int total_cells_cleared = 0;
+  // raytrace_count++;
+  // int cells_before = 0, cells_after = 0;
+  
+  // // 统计清除前的障碍物格子数
+  // for (unsigned int i = 0; i < size_x_ * size_y_; i++) {
+  //   if (costmap_[i] == LETHAL_OBSTACLE) cells_before++;
+  // }
+  
+  // if (raytrace_count % 50 == 0) {
+  //   ROS_WARN("[raytraceFreespace] #%d: origin=(%.2f,%.2f), cloud_points=%d, raytrace_range=%.2f, obstacle_cells_before=%d",
+  //            raytrace_count, ox, oy, cloud.width * cloud.height, clearing_observation.raytrace_range_, cells_before);
+  // }
+
   // get the map coordinates of the origin of the sensor
   unsigned int x0, y0;
   if (!worldToMap(ox, oy, x0, y0))
@@ -523,6 +562,9 @@ void ObstacleLayer::raytraceFreespace(const Observation& clearing_observation, d
   sensor_msgs::PointCloud2ConstIterator<float> iter_x(cloud, "x");
   sensor_msgs::PointCloud2ConstIterator<float> iter_y(cloud, "y");
 
+  // unsigned int rays_traced = 0;
+  // unsigned int valid_endpoints = 0;
+  
   for (; iter_x != iter_x.end(); ++iter_x, ++iter_y)
   {
     double wx = *iter_x;
@@ -568,13 +610,29 @@ void ObstacleLayer::raytraceFreespace(const Observation& clearing_observation, d
     if (!worldToMap(wx, wy, x1, y1))
       continue;
 
+    // valid_endpoints++;
+    
     unsigned int cell_raytrace_range = cellDistance(clearing_observation.raytrace_range_);
     MarkCell marker(costmap_, FREE_SPACE);
     // and finally... we can execute our trace to clear obstacles along that line
     raytraceLine(marker, x0, y0, x1, y1, cell_raytrace_range);
+    // rays_traced++;
 
     updateRaytraceBounds(ox, oy, wx, wy, clearing_observation.raytrace_range_, min_x, min_y, max_x, max_y);
   }
+  
+  // // 统计清除后的障碍物格子数
+  // for (unsigned int i = 0; i < size_x_ * size_y_; i++) {
+  //   if (costmap_[i] == LETHAL_OBSTACLE) cells_after++;
+  // }
+  // total_cells_cleared += (cells_before - cells_after);
+  
+  // static int raytrace_detail_counter = 0;
+  // if (++raytrace_detail_counter % 50 == 0) {
+  //   ROS_WARN("[raytraceFreespace] #%d: valid_endpoints=%u, rays=%u, cells_before=%d, cells_after=%d, cleared=%d, total_cleared=%d", 
+  //            raytrace_detail_counter, valid_endpoints, rays_traced, cells_before, cells_after, 
+  //            cells_before - cells_after, total_cells_cleared);
+  // }
 }
 
 void ObstacleLayer::activate()

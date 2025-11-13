@@ -38,6 +38,7 @@
 #include <dwa_local_planner/dwa_planner_ros.h>
 #include <Eigen/Core>
 #include <cmath>
+#include <angles/angles.h>
 
 #include <ros/console.h>
 
@@ -91,7 +92,7 @@ namespace dwa_local_planner {
   }
 
   DWAPlannerROS::DWAPlannerROS() : initialized_(false),
-      odom_helper_("odom"), setup_(false), recovery_attempts_(0) {
+      odom_helper_("odom"), setup_(false), recovery_attempts_(0), in_final_approach_(false) {
 
   }
 
@@ -208,7 +209,7 @@ namespace dwa_local_planner {
     
     // call with updated footprint
     base_local_planner::Trajectory path = dp_->findBestPath(global_pose, robot_vel, drive_cmds);
-    ROS_DEBUG_NAMED("dwa_local_planner", "Best: %.2f, %.2f, %.2f, %.2f", path.xv_, path.yv_, path.thetav_, path.cost_);
+    // ROS_DEBUG_NAMED("dwa_local_planner", "Best: %.2f, %.2f, %.2f, %.2f", path.xv_, path.yv_, path.thetav_, path.cost_);
 
     /* For timing uncomment
     gettimeofday(&end, NULL);
@@ -284,6 +285,40 @@ namespace dwa_local_planner {
     // update plan in dwa_planner even if we just stop and rotate, to allow checkTrajectory
     dp_->updatePlanAndLocalCosts(current_pose_, transformed_plan, costmap_ros_->getRobotFootprint());
 
+    // Get goal pose and calculate distance
+    geometry_msgs::PoseStamped goal_pose;
+    if (!planner_util_.getGoal(goal_pose)) {
+      ROS_ERROR("Could not get goal pose");
+      return false;
+    }
+    
+    double goal_x = goal_pose.pose.position.x;
+    double goal_y = goal_pose.pose.position.y;
+    double distance_to_goal = base_local_planner::getGoalPositionDistance(current_pose_, goal_x, goal_y);
+    
+    // Check if we should use final straight line approach
+    if (distance_to_goal <= FINAL_APPROACH_DISTANCE) {
+      if (!in_final_approach_) {
+        ROS_INFO("DWA: Entering final approach mode (distance: %.3f m)", distance_to_goal);
+        in_final_approach_ = true;
+      }
+      
+      // Use straight line approach for final 20cm
+      bool success = finalStraightLineApproach(cmd_vel, goal_pose);
+      if (success) {
+        std::vector<geometry_msgs::PoseStamped> local_plan;
+        publishLocalPlan(local_plan);
+        publishGlobalPlan(transformed_plan);
+      }
+      return success;
+    } else {
+      // Reset final approach flag when far from goal
+      if (in_final_approach_) {
+        ROS_INFO("DWA: Exiting final approach mode");
+        in_final_approach_ = false;
+      }
+    }
+
     if (latchedStopRotateController_.isPositionReached(&planner_util_, current_pose_)) {
       //publish an empty plan because we've reached our goal position
       std::vector<geometry_msgs::PoseStamped> local_plan;
@@ -319,6 +354,100 @@ namespace dwa_local_planner {
       }
       return isOk;
     }
+  }
+
+  bool DWAPlannerROS::finalStraightLineApproach(geometry_msgs::Twist& cmd_vel, const geometry_msgs::PoseStamped& goal_pose) {
+    static ros::Time straight_line_start_time;
+    static bool straight_line_phase = false;
+    static bool rotation_phase = false;
+    
+    // Calculate distance and angle to goal
+    double dx = goal_pose.pose.position.x - current_pose_.pose.position.x;
+    double dy = goal_pose.pose.position.y - current_pose_.pose.position.y;
+    double distance_to_goal = sqrt(dx * dx + dy * dy);
+    
+    // Get current robot orientation
+    double current_yaw = tf2::getYaw(current_pose_.pose.orientation);
+    double goal_yaw = tf2::getYaw(goal_pose.pose.orientation);
+    double angle_to_goal = atan2(dy, dx);
+    
+    ros::Time current_time = ros::Time::now();
+    
+    // State machine for final approach
+    if (!straight_line_phase && !rotation_phase) {
+      // Initialize straight line phase
+      straight_line_start_time = current_time;
+      straight_line_phase = true;
+      rotation_phase = false;
+      ROS_INFO("DWA: Starting straight line approach phase (distance: %.3f m)", distance_to_goal);
+    }
+    
+    if (straight_line_phase) {
+      double elapsed_time = (current_time - straight_line_start_time).toSec();
+      
+      // Move straight towards goal for exactly 1 second
+      if (elapsed_time < 1.0) {
+        // Calculate normalized direction vector
+        double norm = sqrt(dx * dx + dy * dy);
+        if (norm > 0.01) {
+          cmd_vel.linear.x = FINAL_APPROACH_LINEAR_VEL * (dx / norm);
+          cmd_vel.linear.y = FINAL_APPROACH_LINEAR_VEL * (dy / norm);
+          cmd_vel.angular.z = 0.0;
+          
+          ROS_DEBUG("DWA: Straight line movement - elapsed: %.2fs", elapsed_time);
+          return true;
+        }
+      }
+      
+      // Transition to rotation phase after 1 second
+      straight_line_phase = false;
+      rotation_phase = true;
+      ROS_INFO("DWA: Transitioning to rotation alignment phase");
+    }
+    
+    if (rotation_phase) {
+      // Check if position is close enough to goal
+      // if (distance_to_goal > 0.05) {
+      //   // Continue moving towards goal if still far
+      //   double norm = sqrt(dx * dx + dy * dy);
+      //   if (norm > 0.01) {
+      //     cmd_vel.linear.x = 0.1 * (dx / norm);  // Slower approach
+      //     cmd_vel.linear.y = 0.1 * (dy / norm);
+      //     cmd_vel.angular.z = 0.0;
+      //     return true;
+      //   }
+      // }
+      
+      // Align orientation to goal orientation
+      double angle_diff = angles::shortest_angular_distance(current_yaw, goal_yaw);
+      
+      if (fabs(angle_diff) > 0.1) {  // 0.1 rad ≈ 5.7 degrees tolerance
+        cmd_vel.linear.x = 0.0;
+        cmd_vel.linear.y = 0.0;
+        cmd_vel.angular.z = (angle_diff > 0) ? 0.3 : -0.3;
+        
+        ROS_DEBUG("DWA: Aligning orientation - angle diff: %.3f rad", angle_diff);
+        return true;
+      }
+      
+      // Goal reached - both position and orientation
+      ROS_INFO("DWA: Final approach completed successfully!");
+      cmd_vel.linear.x = 0.0;
+      cmd_vel.linear.y = 0.0;
+      cmd_vel.angular.z = 0.0;
+      
+      // Reset state for next goal
+      straight_line_phase = false;
+      rotation_phase = false;
+      
+      return true;
+    }
+    
+    // Fallback - stop
+    cmd_vel.linear.x = 0.0;
+    cmd_vel.linear.y = 0.0;
+    cmd_vel.angular.z = 0.0;
+    return false;
   }
 
   bool DWAPlannerROS::attemptRecoveryManeuver(geometry_msgs::Twist& cmd_vel) {
