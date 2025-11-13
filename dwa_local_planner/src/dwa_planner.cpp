@@ -354,6 +354,8 @@ namespace dwa_local_planner {
 
     base_local_planner::LocalPlannerLimits limits = planner_util_->getCurrentLimits();
 
+    // ROS_INFO("in dwa_planner.cpp-------------------------");
+
     // prepare cost functions and generators for this run
     generator_.initialise(pos,
         vel,
