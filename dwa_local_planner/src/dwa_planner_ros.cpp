@@ -369,7 +369,7 @@ namespace dwa_local_planner {
     // Get current robot orientation
     double current_yaw = tf2::getYaw(current_pose_.pose.orientation);
     double goal_yaw = tf2::getYaw(goal_pose.pose.orientation);
-    double angle_to_goal = atan2(dy, dx);
+    // double angle_to_goal = atan2(dy, dx);
     
     ros::Time current_time = ros::Time::now();
     
@@ -420,13 +420,13 @@ namespace dwa_local_planner {
       
       // Align orientation to goal orientation
       double angle_diff = angles::shortest_angular_distance(current_yaw, goal_yaw);
-      ROS_DEBUG("DWA: Angle to goal: %.3f rad, Current yaw: %.3f rad, Goal yaw: %.3f rad", 
-                angle_to_goal, current_yaw, goal_yaw);
+      ROS_DEBUG("DWA: Current yaw: %.3f rad, Goal yaw: %.3f rad", 
+                current_yaw, goal_yaw);
       
       if (fabs(angle_diff) > 0.1) {  // 0.1 rad ≈ 5.7 degrees tolerance
         cmd_vel.linear.x = 0.0;
         cmd_vel.linear.y = 0.0;
-        cmd_vel.angular.z = (angle_diff > 0) ? -0.3 : 0.3;
+        cmd_vel.angular.z = (angle_diff > 0) ? 0.3 : -0.3;
         
         ROS_DEBUG("DWA: Aligning orientation - angle diff: %.3f rad", angle_diff);
         return true;
