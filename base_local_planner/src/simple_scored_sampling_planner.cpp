@@ -132,7 +132,7 @@ namespace base_local_planner {
           traj.addPoint(px, py, pth);
         }
       }
-      ROS_DEBUG("Evaluated %d trajectories, found %d valid", count, count_valid);
+      // ROS_DEBUG("Evaluated %d trajectories, found %d valid", count, count_valid);
       if (best_traj_cost >= 0) {
         // do not try fallback generators
         break;

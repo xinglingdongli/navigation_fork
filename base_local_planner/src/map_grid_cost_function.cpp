@@ -61,23 +61,24 @@ void MapGridCostFunction::setTargetPoses(std::vector<geometry_msgs::PoseStamped>
 bool MapGridCostFunction::prepare() {
   map_.resetPathDist();
   
-  ROS_INFO("MapGridCostFunction::prepare() - target_poses_.size() = %zu", target_poses_.size());
+  // ROS_INFO("MapGridCostFunction::prepare() - target_poses_.size() = %zu", target_poses_.size());
   
   // 在设置目标之前，验证和修复全局路径
   std::vector<geometry_msgs::PoseStamped> validated_poses;
   if (!validateGlobalPath(target_poses_, validated_poses)) {
     ROS_WARN("Global path validation failed, using original path");
     validated_poses = target_poses_;
-  } else {
-    ROS_INFO("Global path validated and fixed: %zu -> %zu poses", 
-             target_poses_.size(), validated_poses.size());
   }
+  // } else {
+  //   // ROS_INFO("Global path validated and fixed: %zu -> %zu poses", 
+  //            target_poses_.size(), validated_poses.size());
+  // }
   
   if (is_local_goal_function_) {
-    ROS_INFO("Using setLocalGoal");
+    // ROS_INFO("Using setLocalGoal");
     map_.setLocalGoal(*costmap_, validated_poses);
   } else {
-    ROS_INFO("Using setTargetCells"); 
+    // ROS_INFO("Using setTargetCells"); 
     map_.setTargetCells(*costmap_, validated_poses);
   }
   
@@ -89,13 +90,13 @@ bool MapGridCostFunction::prepare() {
       reachable_cells++;
     }
   }
-  ROS_WARN("After target setting: %d/%d cells are reachable (target_dist < unreachableCellCosts)", 
-           reachable_cells, total_cells);
+      // ROS_WARN("After target setting: %d/%d cells are reachable (target_dist < unreachableCellCosts)", 
+      //          reachable_cells, total_cells);
   
   // 如果可达性太低，尝试使用更宽松的路径设置
   if (reachable_cells < total_cells * 0.01) { // 少于1%的格子可达
-    ROS_WARN("Very low reachability (%d/%d), attempting relaxed path setting", 
-             reachable_cells, total_cells);
+    // ROS_WARN("Very low reachability (%d/%d), attempting relaxed path setting", 
+    //          reachable_cells, total_cells);
     
     // 尝试使用原始路径但跳过不可达的点
     std::vector<geometry_msgs::PoseStamped> relaxed_poses;
@@ -262,8 +263,8 @@ void MapGridCostFunction::filterReachablePoses(const std::vector<geometry_msgs::
     }
   }
   
-  ROS_INFO("Filtered path: %zu -> %zu reachable poses", 
-           original_path.size(), filtered_path.size());
+  // ROS_INFO("Filtered path: %zu -> %zu reachable poses", 
+  //          original_path.size(), filtered_path.size());
 }
 
 bool MapGridCostFunction::findNearbyFreePose(const geometry_msgs::PoseStamped& original_pose,
